@@ -8,8 +8,8 @@ import (
 
 type DataSupport struct {
 	PartitionMap            []map[string]uint64                   // record the modified map from the decider(s)
-	NewBridgeMap            []*core.SingleBridge                  // 记录bridge和高关联分片
-	DeleteBridgeQue         []*core.SingleBridge                  // 记录bridge和高关联分片
+	NewBrokerMap            []*core.SingleBroker                  // 记录bridge和高关联分片
+	DeleteBrokerQue         []*core.SingleBroker                  // 记录bridge和高关联分片
 	AccountTransferRound    uint64                                // denote how many times accountTransfer do
 	ReceivedNewAccountState map[string]*core.AccountState         // the new accountState From other Shards
 	ReceivedNewTx           []*core.Transaction                   // new transactions from other shards' pool
@@ -27,12 +27,12 @@ type DataSupport struct {
 }
 
 func NewCLPADataSupport() *DataSupport {
-	ABridges := new(core.Bridge)
-	ABridges.NewBridge()
+	ABrokers := new(core.Broker)
+	ABrokers.NewBroker()
 	return &DataSupport{
 		PartitionMap:            make([]map[string]uint64, 0),
-		NewBridgeMap:            make([]*core.SingleBridge, 0),
-		DeleteBridgeQue:         make([]*core.SingleBridge, 0),
+		NewBrokerMap:            make([]*core.SingleBroker, 0),
+		DeleteBrokerQue:         make([]*core.SingleBroker, 0),
 		AccountTransferRound:    0,
 		ReceivedNewAccountState: make(map[string]*core.AccountState),
 		ReceivedNewTx:           make([]*core.Transaction, 0),

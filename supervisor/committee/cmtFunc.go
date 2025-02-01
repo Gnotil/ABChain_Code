@@ -41,9 +41,9 @@ func (ccm *ABCommitteeMod) UpdateAllocationMap(mmap map[string]uint64) {
 	}
 }
 
-func (ccm *ABCommitteeMod) IsBridge(addr utils.Address) int {
+func (ccm *ABCommitteeMod) IsBroker(addr utils.Address) int {
 	ccm.abridgeLock.RLock()
-	result := ccm.ABridges.AdaptiveBridge.IsBridge(addr)
+	result := ccm.ABrokers.AdaptiveBroker.IsBroker(addr)
 	ccm.abridgeLock.RUnlock()
 	return result
 }
@@ -51,11 +51,11 @@ func (ccm *ABCommitteeMod) IsBridge(addr utils.Address) int {
 func (ccm *ABCommitteeMod) getSafeAllo(addr string) (uint64, []uint64) {
 	_, mainShard := ccm.GetAllocationMap(addr)
 	shardList := []uint64{mainShard}
-	if len(ccm.NewActiveBridge.AddressQue) != 0 {
-		if _, ok1 := ccm.NewActiveBridge.AllocateMap[addr]; ok1 {
-			_, shardList = utils.GetMapShard(ccm.NewActiveBridge.AllocateMap[addr])
-		} else if _, ok2 := ccm.NewIdleBridge.AllocateMap[addr]; ok2 {
-			_, shardList = utils.GetMapShard(ccm.NewIdleBridge.AllocateMap[addr])
+	if len(ccm.NewActiveBroker.AddressQue) != 0 {
+		if _, ok1 := ccm.NewActiveBroker.AllocateMap[addr]; ok1 {
+			_, shardList = utils.GetMapShard(ccm.NewActiveBroker.AllocateMap[addr])
+		} else if _, ok2 := ccm.NewIdleBroker.AllocateMap[addr]; ok2 {
+			_, shardList = utils.GetMapShard(ccm.NewIdleBroker.AllocateMap[addr])
 		} else {
 			shardList = []uint64{mainShard}
 		}
@@ -65,16 +65,16 @@ func (ccm *ABCommitteeMod) getSafeAllo(addr string) (uint64, []uint64) {
 
 func (ccm *ABCommitteeMod) getNewAllo(addr string) (uint64, []uint64) {
 	_, mainShard := ccm.GetAllocationMap(addr)
-	isBridge, shardList := ccm.ABridges.AdaptiveBridge.GetBridgeShardList(addr)
-	if isBridge == -1 {
+	isBroker, shardList := ccm.ABrokers.AdaptiveBroker.GetBrokerShardList(addr)
+	if isBroker == -1 {
 		shardList = []uint64{mainShard}
 	}
 
-	if len(ccm.NewActiveBridge.AllocateMap) != 0 {
-		if _, ok1 := ccm.NewActiveBridge.AllocateMap[addr]; ok1 {
-			_, shardList = utils.GetMapShard(ccm.NewActiveBridge.AllocateMap[addr])
-		} else if _, ok2 := ccm.NewIdleBridge.AllocateMap[addr]; ok2 {
-			_, shardList = utils.GetMapShard(ccm.NewIdleBridge.AllocateMap[addr])
+	if len(ccm.NewActiveBroker.AllocateMap) != 0 {
+		if _, ok1 := ccm.NewActiveBroker.AllocateMap[addr]; ok1 {
+			_, shardList = utils.GetMapShard(ccm.NewActiveBroker.AllocateMap[addr])
+		} else if _, ok2 := ccm.NewIdleBroker.AllocateMap[addr]; ok2 {
+			_, shardList = utils.GetMapShard(ccm.NewIdleBroker.AllocateMap[addr])
 		} else {
 			shardList = []uint64{mainShard}
 		}
@@ -84,14 +84,14 @@ func (ccm *ABCommitteeMod) getNewAllo(addr string) (uint64, []uint64) {
 
 func (ccm *ABCommitteeMod) getActiveAllo(addr string) (uint64, []uint64) {
 	_, mainShard := ccm.GetAllocationMap(addr)
-	isBridge, shardList := ccm.ABridges.AdaptiveBridge.GetBridgeShardList(addr)
-	if isBridge == -1 || isBridge == 0 { //isBridge==0，说明是idle broker，当做普通账户来处理
+	isBroker, shardList := ccm.ABrokers.AdaptiveBroker.GetBrokerShardList(addr)
+	if isBroker == -1 || isBroker == 0 { //isBroker==0，is an idle broker. Processed as a regular account
 		shardList = []uint64{mainShard}
 	}
 
-	if len(ccm.NewActiveBridge.AllocateMap) != 0 {
-		if _, ok1 := ccm.NewActiveBridge.AllocateMap[addr]; ok1 {
-			_, shardList = utils.GetMapShard(ccm.NewActiveBridge.AllocateMap[addr])
+	if len(ccm.NewActiveBroker.AllocateMap) != 0 {
+		if _, ok1 := ccm.NewActiveBroker.AllocateMap[addr]; ok1 {
+			_, shardList = utils.GetMapShard(ccm.NewActiveBroker.AllocateMap[addr])
 		}
 	}
 

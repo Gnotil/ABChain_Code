@@ -39,7 +39,7 @@ func (acc *AccountState) PrintAccountState() {
 func ConstructAccount(addr string, IsSubAccount bool) *AccountState {
 	ib := big.NewInt(int64(0))
 	if !IsSubAccount {
-		ib.Add(ib, params.Init_Balance) // 创建原始账户
+		ib.Add(ib, params.Init_Balance) //Create original account
 	}
 	accnState := &AccountState{
 		Address:      addr,
@@ -140,12 +140,12 @@ func (acc *AccountState) AggregateAccounts(targetShard map[uint64]bool, accList 
 		if account.Address != acc.Address {
 			log.Panic("不能Aggregate其他Account") //是否只有主状态才能调用？
 		}
-		if targetShard[s] { //当前account是主账户
-			continue // 更改主账户状态，得改targetShard
+		if targetShard[s] { //当The current split-account is the main account
+			continue // To change master account status, you have to change targetShard
 		}
 		account.Balance.Sub(account.Balance, account.Balance)
 		acc.Balance.Add(acc.Balance, account.Balance)
-		delete(targetShard, s) //把当前分片删掉
+		delete(targetShard, s) //Delete the current shardID
 	}
 }
 

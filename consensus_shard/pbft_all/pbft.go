@@ -123,7 +123,7 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 
 	// choose how to handle the messages in pbft or beyond pbft
 	switch messageHandleType {
-	case "AdaptiveBridges", "AdaptiveBridges2":
+	case "AdaptiveBrokers", "AdaptiveBrokers2":
 		ncdm := dataSupport.NewCLPADataSupport()
 		migSup := dataSupport.NewMigrateSupport()
 		p.ihm = &PBFTInsideHandleModule{
@@ -174,9 +174,7 @@ func (p *PbftConsensusNode) handleClientRequest(con net.Conn) {
 		switch err {
 		case nil:
 			p.tcpPoolLock.Lock()
-			//msgType, _ := message.SplitMessage(clientRequest)
-			//fmt.Println("从conn监听到:", msgType)
-			p.handleMessage(clientRequest) // 从conn监听到消息，开始处理
+			p.handleMessage(clientRequest)
 			p.tcpPoolLock.Unlock()
 		case io.EOF:
 			log.Println("client closed the connection by terminating the process")
@@ -429,8 +427,8 @@ func (p *PbftConsensusNode) handleCommit(content []byte) {
 				IPaddr:  p.ip_nodeTable[p.ShardID][p.view],
 			}
 			orequest := message.RequestOldMessage{
-				SeqStartHeight: p.sequenceID + 1, // 当前节点的下一个
-				SeqEndHeight:   cmsg.SeqID,       // 收到的节点
+				SeqStartHeight: p.sequenceID + 1,
+				SeqEndHeight:   cmsg.SeqID,
 				ServerNode:     sn,
 				SenderNode:     p.RunningNode,
 			}
@@ -441,13 +439,13 @@ func (p *PbftConsensusNode) handleCommit(content []byte) {
 
 			p.pl.Plog.Printf("S%dN%d : is now requesting message (seq %d to %d) ... \n", p.ShardID, p.NodeID, orequest.SeqStartHeight, orequest.SeqEndHeight)
 			msg_send := message.MergeMessage(message.CRequestOldrequest, bromyte)
-			p.pl.Plog.Printf("S%dN%d : 消息没收到，向 S%dN%d 重新发起请求 \n", p.ShardID, p.NodeID, p.ShardID, p.view)
+			p.pl.Plog.Printf("S%dN%d : 消The message was not received. Re-initiate the request to S%dN%d \n", p.ShardID, p.NodeID, p.ShardID, p.view)
 			networks.TcpDial(msg_send, orequest.ServerNode.IPaddr)
 		} else {
 			// implement interface
 			p.ihm.HandleinCommit(cmsg)
 			p.isReply[string(cmsg.Digest)] = true
-			p.pl.Plog.Printf("S%dN%d: this round of pbft %d is end 共识结束 \n", p.ShardID, p.NodeID, p.sequenceID)
+			p.pl.Plog.Printf("S%dN%d: this round of pbft %d is end \n", p.ShardID, p.NodeID, p.sequenceID)
 			p.sequenceID += 1
 		}
 

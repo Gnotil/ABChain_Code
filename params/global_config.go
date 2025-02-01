@@ -27,7 +27,7 @@ var (
 var (
 	FileInput0     = `../DataTX/0to999999_BlockTransaction.csv`
 	FileInput1     = `../DataTX/1000000to1999999_BlockTransaction.csv`
-	FileInput2     = `../DataTX/2000000to2999999_BlockTransaction.csv`
+	FileInput2     = `../../GoCode/DataTX/2000000to2999999_BlockTransaction.csv`
 	FileInput3     = `../DataTX/3000000to3999999_BlockTransaction.csv`
 	FileInput4     = `../DataTX/4000000to4999999_BlockTransaction.csv`
 	FileInput5     = `../DataTX/5000000to5999999_BlockTransaction.csv`
@@ -53,21 +53,21 @@ var (
 
 	PTxWeight = 0
 
-	CandidateNum = 10 // 每次partition把最热的10个账户挑出来，排序
+	CandidateNum = 10
 
-	ABridgesInitNum = BrokerNum // 初始化时，添加10个账户到DB
-	ABridgesAddNum  = BrokerNum // 排序后，取前5个，添加到DB
-	IdleBridgeNum   = BrokerNum
+	ABrokersInitNum = BrokerNum
+	ABrokersAddNum  = BrokerNum
+	IdleBrokerNum   = BrokerNum
 
-	GlobalABridges = true // 是否将AB设置为全局Broker
-	// InitBridgeMod : "Random", "First", "Preset","Algo"
-	InitBridgeMod = "CodeAlgo" // Algo, Rand, PreSet, CodeAlgo, CodeRand, CodePreSet
+	GlobalABrokers = true
+	// InitBrokerMod : "Random", "First", "Preset","Algo"
+	InitBrokerMod = "CodeAlgo" // Algo, Rand, PreSet, CodeAlgo, CodeRand, CodePreSet
 )
 
 var (
-	Mod           = 0 //"AdaptiveBridges", "CLPA_Broker", "CLPA", "Broker", "Relay"
-	Committee     = "AdaptiveBridges"
+	Mod           = 0 //"AdaptiveBrokers", "CLPA_Broker", "CLPA", "Broker", "Relay"
+	Committee     = "AdaptiveBrokers"
 	MeasureMethod = MeasureABMod
 
-	PredSize = 5000
+	PredSize = 500
 )

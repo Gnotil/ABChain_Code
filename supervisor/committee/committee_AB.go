@@ -38,23 +38,20 @@ type ABCommitteeMod struct {
 	abCnt    int32
 
 	// additional variants
-	abLock  sync.Mutex
-	abGraph *partition_split.ABState // 新加参数
-	//modifiedMap       map[string]uint64
+	abLock            sync.Mutex
+	abGraph           *partition_split.ABState
 	abLastRunningTime time.Time
 	abFreq            int
 
-	//broker related  attributes avatar
-	ABridges      *broker.ABridges
+	ABrokers      *broker.ABrokers
 	abridgeLock   sync.RWMutex
 	AllocationMap map[string]uint64
 	alloLock      sync.RWMutex
 
-	bridgeConfirm1Pool map[string]*message.ABridgesMag1Confirm
-	bridgeConfirm2Pool map[string]*message.ABridgesMag2Confirm
+	bridgeConfirm1Pool map[string]*message.ABrokersMag1Confirm
+	bridgeConfirm2Pool map[string]*message.ABrokersMag2Confirm
 	bridgeTxPool       []*core.Transaction
 	bridgeModuleLock   sync.Mutex
-	//targetBridge       broker.SelBridge
 
 	// logger module
 	sl *supervisor_log.SupervisorLog
@@ -62,9 +59,9 @@ type ABCommitteeMod struct {
 	// control components
 	Ss              *signal.StopSignal // to control the stop message sending
 	IpNodeTable     map[uint64]map[uint64]string
-	PermitBridgeMap map[string]map[uint64]bool
-	PermitBridgeQue map[string]int
-	PermitBridgeNum int
+	PermitBrokerMap map[string]map[uint64]bool
+	PermitBrokerQue map[string]int
+	PermitBrokerNum int
 	//UpdateTime       time.Time
 	IsUpdateFinished bool
 
@@ -74,7 +71,7 @@ type ABCommitteeMod struct {
 	shard_txNum []int
 
 	//PartitionMap         map[string]uint64
-	NewActiveBridge, NewIdleBridge *core.SingleBridge
+	NewActiveBroker, NewIdleBroker *core.SingleBroker
 	reSplitTx                      []*core.Transaction
 
 	TxFromCShard      int
@@ -86,11 +83,11 @@ func NewABCommitteeMod(Ip_nodeTable map[uint64]map[uint64]string, Ss *signal.Sto
 	csvFilePath []string, indexBegin, indexEnd, dataNum, batchNum, abFrequency int) *ABCommitteeMod {
 	mg := new(partition_split.ABState)
 	mg.Init_ABState(0.5, params.MaxIterations, params.ShardNum) // 新加参数
-	ABridges := new(broker.ABridges)
-	ABridges.NewABridges(nil)
+	ABrokers := new(broker.ABrokers)
+	ABrokers.NewABrokers(nil)
 
-	NewActiveBridge := core.InitBrokerAddr(params.ABridgesInitNum, params.InitBridgeMod)
-	ABridges.AdaptiveBridge.UpdateBridgeMap(NewActiveBridge)
+	NewActiveBroker := core.InitBrokerAddr(params.ABrokersInitNum, params.InitBrokerMod)
+	ABrokers.AdaptiveBroker.UpdateBrokerMap(NewActiveBroker)
 
 	return &ABCommitteeMod{
 		csvPath:            csvFilePath,
@@ -101,29 +98,27 @@ func NewABCommitteeMod(Ip_nodeTable map[uint64]map[uint64]string, Ss *signal.Sto
 		nowDataNum:         0,
 		corssShardNum:      0,
 		innerShardNum:      0,
-		abGraph:            mg, // 新加参数
+		abGraph:            mg,
 		AllocationMap:      make(map[string]uint64),
 		abFreq:             abFrequency,
 		abLastRunningTime:  time.Time{},
-		bridgeConfirm1Pool: make(map[string]*message.ABridgesMag1Confirm),
-		bridgeConfirm2Pool: make(map[string]*message.ABridgesMag2Confirm),
+		bridgeConfirm1Pool: make(map[string]*message.ABrokersMag1Confirm),
+		bridgeConfirm2Pool: make(map[string]*message.ABrokersMag2Confirm),
 		bridgeTxPool:       make([]*core.Transaction, 0),
-		ABridges:           ABridges,
+		ABrokers:           ABrokers,
 
-		IpNodeTable:     Ip_nodeTable,
-		Ss:              Ss,
-		sl:              sl,
-		PermitBridgeQue: make(map[string]int),
-		PermitBridgeMap: make(map[string]map[uint64]bool),
-		PermitBridgeNum: 0,
-		//UpdateTime:       time.Time{},
+		IpNodeTable:      Ip_nodeTable,
+		Ss:               Ss,
+		sl:               sl,
+		PermitBrokerQue:  make(map[string]int),
+		PermitBrokerMap:  make(map[string]map[uint64]bool),
+		PermitBrokerNum:  0,
 		IsUpdateFinished: true,
 
 		shard_txNum: make([]int, params.ShardNum),
 
-		//PartitionMap: make(map[string]uint64),
-		NewActiveBridge:   core.CreateSingleBridge(),
-		NewIdleBridge:     core.CreateSingleBridge(),
+		NewActiveBroker:   core.CreateSingleBroker(),
+		NewIdleBroker:     core.CreateSingleBroker(),
 		reSplitTx:         make([]*core.Transaction, 0),
 		TxFromCShard:      0,
 		reSplitTxCount:    0,
@@ -135,28 +130,26 @@ func NewABCommitteeMod(Ip_nodeTable map[uint64]map[uint64]string, Ss *signal.Sto
 }
 
 func (ccm *ABCommitteeMod) MsgSendingControl() {
-	//abCnt := 0
-	//addReSplitTxCount := 0
 	txlist := make([]*core.Transaction, 0) // save the txs in this epoch (round)
 	for idx := ccm.indexBegin; idx <= ccm.indexEnd; idx++ {
-		ccm.sl.Slog.Println("读取数据集: ", ccm.csvPath[idx])
-		txfile, err := os.Open(ccm.csvPath[idx]) // 打开csvPath
+		ccm.sl.Slog.Println("Read the dataset: ", ccm.csvPath[idx])
+		txfile, err := os.Open(ccm.csvPath[idx])
 		if err != nil {
 			log.Panic(err)
 		}
 		defer txfile.Close()
-		reader := csv.NewReader(txfile) // 构建reader
+		reader := csv.NewReader(txfile)
 
 		for {
-			data, err1 := reader.Read() // 读 csvPath 里的 Tx (一条一条地读！)
+			data, err1 := reader.Read() // Read Tx in csvPath (read one by one!)
 			if err1 == io.EOF {
 				break // 进入下一层，idx++
 			}
 			if err1 != nil {
 				log.Panic(err1)
 			}
-			if tx, ok := data2tx(data, uint64(ccm.nowDataNum)); ok { // 转化为Tx结构
-				txlist = append(txlist, tx) //不停地往txlist添加数据
+			if tx, ok := data2tx(data, uint64(ccm.nowDataNum)); ok { // Convert to Tx structure
+				txlist = append(txlist, tx) //Continuously adding data to txlist
 				ccm.nowDataNum++
 			} else {
 				continue
@@ -169,12 +162,12 @@ func (ccm *ABCommitteeMod) MsgSendingControl() {
 			}
 
 			// batch sending condition
-			if len(txlist) == ccm.batchDataNum || ccm.nowDataNum == ccm.dataTotalNum { // 达到一个batch
+			if len(txlist) == ccm.batchDataNum || ccm.nowDataNum == ccm.dataTotalNum { // Achieve a batch
 				// set the algorithm timer begins
 				if ccm.abLastRunningTime.IsZero() {
 					ccm.abLastRunningTime = time.Now()
 				}
-				itx := ccm.dealTxByABridges(txlist)
+				itx := ccm.dealTxByABrokers(txlist)
 				ccm.txSending(itx)
 				// reset the variants about tx sending
 				txlist = make([]*core.Transaction, 0) // 清空了txlist
@@ -182,34 +175,31 @@ func (ccm *ABCommitteeMod) MsgSendingControl() {
 			}
 
 			if !ccm.abLastRunningTime.IsZero() && time.Since(ccm.abLastRunningTime) >= time.Duration(ccm.abFreq)*time.Second {
-				// 时间到该重新ab_Partition了
 				ccm.abLock.Lock()
 				ccm.abCnt++
-				ccm.AddPendingTXs() // 把挂起交易添加到图
+				ccm.AddPendingTXs() // Add suspended transactions to the graph (note: not use!!!)
 				mmap := ccm.abGraph.ABPartition_flpa()
-				//mmap, _ := ccm.abGraph.CLPA_Partition()
 				//mmap, _ := ccm.abGraph.CLPA_Partition()
 				ccm.sl.Slog.Println("====== UpdateAllocationMap")
 				ccm.UpdateAllocationMap(mmap)
 
-				SelBridge := core.CreateSingleBridge()
-				NewActiveBridge := core.CreateSingleBridge()
-				NewIdleBridge := core.CreateSingleBridge()
-				if ccm.IsUpdateFinished && params.ABridgesAddNum != 0 {
-					SelBridge = ccm.abGraph.ABSplit(params.ABridgesAddNum, true)
-					NewActiveBridge, NewIdleBridge, _ = ccm.ABridges.AdaptiveBridge.PreUpdateBridgeMap(SelBridge)
+				SelBroker := core.CreateSingleBroker()
+				NewActiveBroker := core.CreateSingleBroker()
+				NewIdleBroker := core.CreateSingleBroker()
+				if ccm.IsUpdateFinished && params.ABrokersAddNum != 0 {
+					SelBroker = ccm.abGraph.ABSplit(params.ABrokersAddNum, true)
+					NewActiveBroker, NewIdleBroker, _ = ccm.ABrokers.AdaptiveBroker.PreUpdateBrokerMap(SelBroker)
 				}
-				//ccm.PartitionMap = mmap
-				if len(SelBridge.AddressQue) == 0 {
-					ccm.NewActiveBridge = ccm.ABridges.AdaptiveBridge.ActiveBridge
-					ccm.NewIdleBridge = ccm.ABridges.AdaptiveBridge.IdleBridge
+				if len(SelBroker.AddressQue) == 0 {
+					ccm.NewActiveBroker = ccm.ABrokers.AdaptiveBroker.ActiveBroker
+					ccm.NewIdleBroker = ccm.ABrokers.AdaptiveBroker.IdleBroker
 				} else {
-					ccm.NewActiveBridge = NewActiveBridge
-					ccm.NewIdleBridge = NewIdleBridge
+					ccm.NewActiveBroker = NewActiveBroker
+					ccm.NewIdleBroker = NewIdleBroker
 				}
 
 				ccm.sl.Slog.Println("send MixUpdate(1), ", len(mmap))
-				ccm.abMixUpdateMsgSend(mmap, SelBridge, false)
+				ccm.abMixUpdateMsgSend(mmap, SelBroker, false)
 				ccm.IsUpdateFinished = false
 				ccm.sl.Slog.Println("send MixUpdate success(1)")
 
@@ -235,29 +225,29 @@ func (ccm *ABCommitteeMod) MsgSendingControl() {
 		if time.Since(ccm.abLastRunningTime) >= time.Duration(ccm.abFreq)*time.Second {
 			ccm.abLock.Lock()
 			ccm.abCnt++
-			ccm.AddPendingTXs() // 把挂起交易添加到图
+			ccm.AddPendingTXs()
 			mmap := ccm.abGraph.ABPartition_flpa()
 			//mmap, _ := ccm.abGraph.CLPA_Partition()
 			//mmap := make(map[string]uint64)
 			ccm.UpdateAllocationMap(mmap)
 
-			SelBridge := core.CreateSingleBridge()
-			NewActiveBridge := core.CreateSingleBridge()
-			NewIdleBridge := core.CreateSingleBridge()
-			if ccm.IsUpdateFinished && params.ABridgesAddNum != 0 {
-				SelBridge = ccm.abGraph.ABSplit(params.ABridgesAddNum, true)
-				NewActiveBridge, NewIdleBridge, _ = ccm.ABridges.AdaptiveBridge.PreUpdateBridgeMap(SelBridge)
+			SelBroker := core.CreateSingleBroker()
+			NewActiveBroker := core.CreateSingleBroker()
+			NewIdleBroker := core.CreateSingleBroker()
+			if ccm.IsUpdateFinished && params.ABrokersAddNum != 0 {
+				SelBroker = ccm.abGraph.ABSplit(params.ABrokersAddNum, true)
+				NewActiveBroker, NewIdleBroker, _ = ccm.ABrokers.AdaptiveBroker.PreUpdateBrokerMap(SelBroker)
 			}
-			if len(SelBridge.AddressQue) == 0 {
-				ccm.NewActiveBridge = ccm.ABridges.AdaptiveBridge.ActiveBridge
-				ccm.NewIdleBridge = ccm.ABridges.AdaptiveBridge.IdleBridge
+			if len(SelBroker.AddressQue) == 0 {
+				ccm.NewActiveBroker = ccm.ABrokers.AdaptiveBroker.ActiveBroker
+				ccm.NewIdleBroker = ccm.ABrokers.AdaptiveBroker.IdleBroker
 			} else {
-				ccm.NewActiveBridge = NewActiveBridge
-				ccm.NewIdleBridge = NewIdleBridge
+				ccm.NewActiveBroker = NewActiveBroker
+				ccm.NewIdleBroker = NewIdleBroker
 			}
 
 			ccm.sl.Slog.Println("send MixUpdate(2), ", len(mmap))
-			ccm.abMixUpdateMsgSend(mmap, SelBridge, false)
+			ccm.abMixUpdateMsgSend(mmap, SelBroker, false)
 			ccm.IsUpdateFinished = false
 			ccm.sl.Slog.Println("send MixUpdate success(2)")
 
@@ -272,12 +262,12 @@ func (ccm *ABCommitteeMod) MsgSendingControl() {
 			ccm.sl.Slog.Println("Next CLPA epoch begins. ")
 		}
 	}
-	ccm.sl.Slog.Printf("最后打印 - TxFromCShard:%d,reSplitTxCount:%d, Re_reSplitTxCount:%d", ccm.TxFromCShard, ccm.reSplitTxCount, ccm.Re_reSplitTxCount)
+	ccm.sl.Slog.Printf("print - TxFromCShard:%d,reSplitTxCount:%d, Re_reSplitTxCount:%d", ccm.TxFromCShard, ccm.reSplitTxCount, ccm.Re_reSplitTxCount)
 }
 
-func (ccm *ABCommitteeMod) dealTxByABridges(txs []*core.Transaction) (itxs []*core.Transaction) {
+func (ccm *ABCommitteeMod) dealTxByABrokers(txs []*core.Transaction) (itxs []*core.Transaction) {
 	itxs = make([]*core.Transaction, 0)
-	bridgeRawMegs := make([]*message.ABridgesRawMeg, 0)
+	bridgeRawMegs := make([]*message.ABrokersRawMeg, 0)
 	for _, tx := range txs {
 		senderMainShard, senderShardList := ccm.getActiveAllo(tx.Sender)
 		recipientMainShard, recipientShardList := ccm.getActiveAllo(tx.Recipient)
@@ -287,32 +277,28 @@ func (ccm *ABCommitteeMod) dealTxByABridges(txs []*core.Transaction) (itxs []*co
 			} else {
 				ccm.reSplitTxCount++
 			}
-			//ccm.sl.Slog.Println("拆分过的交易，需要再次拆分")
-			//senderMainShard, senderShardList = ccm.getNewAllo(tx.Sender)
-			//recipientMainShard, recipientShardList = ccm.getNewAllo(tx.Recipient)
 		}
 
 		if s := utils.GetIntersection(senderShardList, recipientShardList); len(s) == 0 {
-			// 收发双方不能通过 ActiveBridge 沟通 (此时，如果是ExpiredBridge发起的跨分片交易，也需要通过ActiveBridge拆分)
-			targetBridgeAddr := ccm.ABridges.AdaptiveBridge.FindIntersectionBridge(senderMainShard, recipientMainShard, ccm.NewActiveBridge)
+			targetBrokerAddr := ccm.ABrokers.AdaptiveBroker.FindIntersectionBroker(senderMainShard, recipientMainShard, ccm.NewActiveBroker)
 			rootTxHash := tx.TxHash
 			if tx.RootTxHash != nil {
 				rootTxHash = tx.RootTxHash
 			}
-			brokerRawMeg := &message.ABridgesRawMeg{
+			brokerRawMeg := &message.ABrokersRawMeg{
 				Tx:         tx,
-				Bridge:     targetBridgeAddr, // 选中一个broker
+				Broker:     targetBrokerAddr, // 选中一个broker
 				RootTxHash: rootTxHash,
 			}
 			bridgeRawMegs = append(bridgeRawMegs, brokerRawMeg)
 			ccm.corssShardNum++
-		} else { // 能conn
-			itxs = append(itxs, tx) // 普通片内交易
+		} else {
+			itxs = append(itxs, tx)
 			ccm.innerShardNum++
 		}
 	}
-	if len(bridgeRawMegs) != 0 { // 需要broker处理
-		ccm.handleABridgesRawMag(bridgeRawMegs) // 转交broker处理
+	if len(bridgeRawMegs) != 0 {
+		ccm.handleABrokersRawMag(bridgeRawMegs)
 	}
 	return itxs
 }
@@ -322,12 +308,12 @@ func (ccm *ABCommitteeMod) txSending(txlist []*core.Transaction) {
 	sendToShard := make(map[uint64][]*core.Transaction)
 
 	for idx := 0; idx <= len(txlist); idx++ {
-		if idx > 0 && (idx%params.InjectSpeed == 0 || idx == len(txlist)) { // 每隔params.InjectSpeed执行一次，最后也要执行一次
+		if idx > 0 && (idx%params.InjectSpeed == 0 || idx == len(txlist)) {
 			// send to shard
 			for sid := uint64(0); sid < uint64(params.ShardNum); sid++ { // 0 ~ ShardNum
 				it := message.InjectTxs{
 					Epoch:     ccm.abCnt,
-					Txs:       sendToShard[sid], // 这里应该是空？？ => idx > 0才执行，所以先会执行下面的语句
+					Txs:       sendToShard[sid],
 					ToShardID: sid,
 				}
 				itByte, err := json.Marshal(it)
@@ -335,8 +321,7 @@ func (ccm *ABCommitteeMod) txSending(txlist []*core.Transaction) {
 					log.Panic(err)
 				}
 				send_msg := message.MergeMessage(message.CInject, itByte)
-				go networks.TcpDial(send_msg, ccm.IpNodeTable[sid][0]) // 发给其他sid 的node0？？
-				//ccm.sl.Slog.Printf("txSend 分片 %d，交易数 %d", sid, len(sendToShard[sid]))
+				go networks.TcpDial(send_msg, ccm.IpNodeTable[sid][0])
 			}
 			sendToShard = make(map[uint64][]*core.Transaction)
 			time.Sleep(time.Second)
@@ -344,36 +329,24 @@ func (ccm *ABCommitteeMod) txSending(txlist []*core.Transaction) {
 		if idx == len(txlist) {
 			break
 		}
-		tx := txlist[idx] // 获取txlist的内容
+		tx := txlist[idx]
 		ccm.abLock.Lock()
 
-		//senderMainShard, senderShardList := ccm.getActiveAllo(tx.Sender)
-		//recipientMainShard, recipientShardList := ccm.getActiveAllo(tx.Recipient)
-		//if tx.RawTxHash != nil {
-		//	senderMainShard, senderShardList = ccm.getNewAllo(tx.Sender)
-		//	recipientMainShard, recipientShardList = ccm.getNewAllo(tx.Recipient)
-		//}
 		senderMainShard, senderShardList := ccm.getNewAllo(tx.Sender)
 		recipientMainShard, recipientShardList := ccm.getNewAllo(tx.Recipient)
 		IntersecList := utils.GetIntersection(senderShardList, recipientShardList)
 		if len(IntersecList) == 0 {
-			ccm.reSplitTx = append(ccm.reSplitTx, tx)
-			//ccm.reSplitTxCount++
-			//ccm.sl.Slog.Println("tx.Sender==tx.OriginalSender: ", tx.Sender == tx.OriginalSender)
-			//ccm.sl.Slog.Println("tx.Recipient==tx.FinalRecipient: ", tx.Recipient == tx.FinalRecipient)
-			//ccm.sl.Slog.Println("senderShardList: ", senderShardList)
-			//ccm.sl.Slog.Println("recipientShardList: ", recipientShardList)
-			//ccm.sl.Slog.Panic("跨分片Tx，需要重新拆分")
+			ccm.reSplitTx = append(ccm.reSplitTx, tx) // Cross shard Tx, needs to be re split
 		} else {
 			rand.Seed(time.Now().UnixNano())
 			r := rand.Intn(len(IntersecList))
 			toShard := IntersecList[r]
 
-			NewActiveBridge, NewIdleBridge := ccm.NewActiveBridge, ccm.NewIdleBridge
-			if len(NewActiveBridge.AddressQue) == 0 {
-				NewActiveBridge, NewIdleBridge = ccm.ABridges.AdaptiveBridge.ActiveBridge, ccm.ABridges.AdaptiveBridge.IdleBridge
+			NewActiveBroker, NewIdleBroker := ccm.NewActiveBroker, ccm.NewIdleBroker
+			if len(NewActiveBroker.AddressQue) == 0 {
+				NewActiveBroker, NewIdleBroker = ccm.ABrokers.AdaptiveBroker.ActiveBroker, ccm.ABrokers.AdaptiveBroker.IdleBroker
 			}
-			if core.NewestThan(tx.Sender, tx.Recipient, NewActiveBridge, NewIdleBridge) == 1 { //Sender更加新，应该发给Recipient
+			if core.NewestThan(tx.Sender, tx.Recipient, NewActiveBroker, NewIdleBroker) == 1 {
 				if utils.InIntList(recipientMainShard, IntersecList) {
 					toShard = recipientMainShard
 				}
@@ -389,18 +362,12 @@ func (ccm *ABCommitteeMod) txSending(txlist []*core.Transaction) {
 		}
 		ccm.abLock.Unlock()
 	}
-	//if len(reSplitTx) > 0 {
-	//	ccm.sl.Slog.Println("跨分片Tx，需要重新拆分，长度为", len(reSplitTx))
-	//	reTx := ccm.dealTxByABridges(reSplitTx)
-	//	ccm.sl.Slog.Println("TxSending 2")
-	//	ccm.txSending(reTx)
-	//}
 }
 
-func (ccm *ABCommitteeMod) abMixUpdateMsgSend(mmap map[string]uint64, nab *core.SingleBridge, isInit bool) {
+func (ccm *ABCommitteeMod) abMixUpdateMsgSend(mmap map[string]uint64, nab *core.SingleBroker, isInit bool) {
 	nbq := message.A2C_MixUpdateMsgStruct{
 		PartitionModified: mmap,
-		NewSingleBridge:   nab,
+		NewSingleBroker:   nab,
 		IsInit:            isInit,
 	}
 	nbqByte, err := json.Marshal(nbq)
@@ -410,7 +377,7 @@ func (ccm *ABCommitteeMod) abMixUpdateMsgSend(mmap map[string]uint64, nab *core.
 	send_msg := message.MergeMessage(message.A2C_MixUpdateMsg, nbqByte)
 	for shard := uint64(0); shard < uint64(params.ShardNum); shard++ {
 		// send to worker shards
-		ccm.sl.Slog.Printf("%d个Partition信息与%d个New Bridge 发送给分片%d.\n", len(nbq.PartitionModified), len(nbq.NewSingleBridge.AddressQue), shard)
+		ccm.sl.Slog.Printf("%d Partition item and %d New Broker, send to shard%d.\n", len(nbq.PartitionModified), len(nbq.NewSingleBroker.AddressQue), shard)
 		networks.TcpDial(send_msg, ccm.IpNodeTable[shard][0])
 	}
 	ccm.sl.Slog.Println("Supervisor: all MixUpdate message has been sent. ")
@@ -419,14 +386,10 @@ func (ccm *ABCommitteeMod) abMixUpdateMsgSend(mmap map[string]uint64, nab *core.
 func (ccm *ABCommitteeMod) abReset() {
 	ccm.alloLock.Lock()
 	defer ccm.alloLock.Unlock()
-	//ccm.shard_txNum = make([]int, params.ShardNum)
 	ccm.abGraph = new(partition_split.ABState)
-	ccm.abGraph.Init_ABState(0.5, params.MaxIterations, params.ShardNum) // 新加参数
+	ccm.abGraph.Init_ABState(0.5, params.MaxIterations, params.ShardNum)
 	for key, val := range ccm.AllocationMap {
-		//ccm.abGraph.VertexShardMap[partition_split.Vertex{Addr: key}] = int(val) // partitionMap从AllocationMap取值
-		//ccm.abGraph.VertexShardMap.Store(partition_split.Vertex{Addr: key}, int(val))
 		ccm.abGraph.VertexAlloMap[partition_split.Vertex{Addr: key}] = int(val)
-		//ccm.abGraph.PartitionMap[partition_split.Vertex{Addr: key}] = int(val)
 	}
 }
 
@@ -443,12 +406,12 @@ func (ccm *ABCommitteeMod) HandleOtherMessage(msg []byte) {
 	}
 	ccm.sl.Slog.Printf("处理 Other Message from shard %d, len %d", itct.FromShard, len(itct.Txs))
 	ccm.TxFromCShard += len(itct.Txs)
-	itxs := ccm.dealTxByABridges(itct.Txs)
+	itxs := ccm.dealTxByABrokers(itct.Txs)
 	ccm.txSending(itxs)
 }
 
 func (ccm *ABCommitteeMod) HandleBlockInfo(b *message.BlockInfoMsg) {
-	ccm.sl.Slog.Printf("从C-Shard %d 收到交易 epoch %d.\n", b.SenderShardID, b.Epoch)
+	ccm.sl.Slog.Printf("从C-Shard %d Received transaction epoch %d.\n", b.SenderShardID, b.Epoch)
 	if atomic.CompareAndSwapInt32(&ccm.curEpoch, int32(b.Epoch-1), int32(b.Epoch)) {
 		ccm.sl.Slog.Println("this curEpoch is updated", b.Epoch)
 	}
@@ -464,28 +427,19 @@ func (ccm *ABCommitteeMod) HandleBlockInfo(b *message.BlockInfoMsg) {
 
 	ccm.abLock.Lock()
 	for _, tx := range b.InnerShardTxs {
-		//SenderIsBridge := ccm.IsBridge(tx.Sender) == 1
-		//RecipientIsBridge := ccm.IsBridge(tx.Recipient) == 1 // active
-		//if SenderIsBridge || RecipientIsBridge {             // 跳过有broker的
-		//	continue
-		//}
 		ccm.abGraph.AddEdge(partition_split.Vertex{Addr: tx.Sender}, partition_split.Vertex{Addr: tx.Recipient})
 	}
 	for _, b1tx := range b.Broker1Txs {
 		ccm.abGraph.AddEdge(partition_split.Vertex{Addr: b1tx.OriginalSender}, partition_split.Vertex{Addr: b1tx.FinalRecipient})
 	}
-	//for _, ptx := range b.PendingTXs {
-	//	ccm.bridgeTxPool = append(ccm.bridgeTxPool, ptx)
-	//}
-	//ccm.bridgeTxPool = b.PendingTXs
 	ccm.abLock.Unlock()
 }
 
 func (ccm *ABCommitteeMod) AddPendingTXs() {
 	for i := 0; i < params.PTxWeight; i++ {
 		for _, ptx := range ccm.bridgeTxPool {
-			isBroker1Tx := ptx.Sender == ptx.OriginalSender    //发送方=初始发送方 -> 是tx1，（从初始发送方发给broker）
-			isBroker2Tx := ptx.Recipient == ptx.FinalRecipient //接收方=最终接收方 -> 是tx2，（从broker发给最终接收方）
+			isBroker1Tx := ptx.Sender == ptx.OriginalSender
+			isBroker2Tx := ptx.Recipient == ptx.FinalRecipient
 
 			if isBroker1Tx {
 				ccm.abGraph.AddEdge(partition_split.Vertex{Addr: ptx.OriginalSender}, partition_split.Vertex{Addr: ptx.FinalRecipient})
@@ -499,11 +453,11 @@ func (ccm *ABCommitteeMod) AddPendingTXs() {
 }
 
 func (ccm *ABCommitteeMod) createConfirm(txs []*core.Transaction) {
-	confirm1s := make([]*message.ABridgesMag1Confirm, 0)
-	confirm2s := make([]*message.ABridgesMag2Confirm, 0)
+	confirm1s := make([]*message.ABrokersMag1Confirm, 0)
+	confirm2s := make([]*message.ABrokersMag2Confirm, 0)
 	ccm.bridgeModuleLock.Lock()
 	for _, tx := range txs {
-		if confirm1, ok := ccm.bridgeConfirm1Pool[string(tx.TxHash)]; ok { // 如果这个及交易在pool里，添加
+		if confirm1, ok := ccm.bridgeConfirm1Pool[string(tx.TxHash)]; ok { // If this and the transaction are in the pool, add
 			confirm1s = append(confirm1s, confirm1)
 		}
 		if confirm2, ok := ccm.bridgeConfirm2Pool[string(tx.TxHash)]; ok {
@@ -513,7 +467,7 @@ func (ccm *ABCommitteeMod) createConfirm(txs []*core.Transaction) {
 	ccm.bridgeModuleLock.Unlock()
 
 	if len(confirm1s) != 0 {
-		ccm.handleTx1ConfirmMag(confirm1s) // 处理 confirm
+		ccm.handleTx1ConfirmMag(confirm1s)
 	}
 
 	if len(confirm2s) != 0 {
@@ -521,25 +475,24 @@ func (ccm *ABCommitteeMod) createConfirm(txs []*core.Transaction) {
 	}
 }
 
-// 根据从各个分片收到的许可Bridge 更新A-Shard的bridge
+// 根据从各个分片收到的许可Broker 更新A-Shard的bridge
 func (ccm *ABCommitteeMod) HandleMixUpdateInfo(b *message.MixUpdateInfoMsg) {
 	for _, permit := range b.MixUpdateInfo {
-		ccm.PermitBridgeQue[permit.SenderAddress] = permit.Index
-		ccm.PermitBridgeMap[permit.SenderAddress] = permit.AssoShard // 收到一个分片的所有Bridge账户，累加这个分片
+		ccm.PermitBrokerQue[permit.SenderAddress] = permit.Index
+		ccm.PermitBrokerMap[permit.SenderAddress] = permit.AssoShard // Receive all Broker accounts for a shard and add up this shard
 	}
 	ccm.sl.Slog.Printf("收到来自分片%d的bridge permission\n", b.FromShard)
-	ccm.PermitBridgeNum += 1
-	if ccm.PermitBridgeNum == params.ShardNum { //收到所有分片
-		ccm.sl.Slog.Printf("收集完毕，更新bridge len=%d \n", len(ccm.PermitBridgeMap))
+	ccm.PermitBrokerNum += 1
+	if ccm.PermitBrokerNum == params.ShardNum { //Received all shards
+		ccm.sl.Slog.Printf("收集完毕，更新bridge len=%d \n", len(ccm.PermitBrokerMap))
 
-		// 将map的键值对复制到slice中
 		var pairs []Pair
 		AddrQue := make([]string, 0)
-		for k, v := range ccm.PermitBridgeQue {
+		for k, v := range ccm.PermitBrokerQue {
 			pairs = append(pairs, Pair{k, v})
 		}
-		// 对slice进行排序
-		sort.Slice(pairs, func(i, j int) bool { return pairs[i].Value < pairs[j].Value }) // 升序
+		// Sort the slices
+		sort.Slice(pairs, func(i, j int) bool { return pairs[i].Value < pairs[j].Value })
 		for idx, pa := range pairs {
 			if idx != pa.Value {
 				for i, p := range pairs {
@@ -550,38 +503,29 @@ func (ccm *ABCommitteeMod) HandleMixUpdateInfo(b *message.MixUpdateInfoMsg) {
 			AddrQue = append(AddrQue, pa.Key)
 		}
 
-		SelBridge := &core.SingleBridge{
+		SelBroker := &core.SingleBroker{
 			AddressQue:  AddrQue,
-			AllocateMap: ccm.PermitBridgeMap,
+			AllocateMap: ccm.PermitBrokerMap,
 		}
-		SelBridge.CheckBridge()
+		SelBroker.CheckBroker()
 
-		deleteBridge := ccm.ABridges.AdaptiveBridge.UpdateBridgeMap(SelBridge)
-		ccm.sl.Slog.Printf("删除 %d 个IdleABridge", len(deleteBridge.AllocateMap))
+		deleteBroker := ccm.ABrokers.AdaptiveBroker.UpdateBrokerMap(SelBroker)
+		ccm.sl.Slog.Printf("删除 %d 个IdleABroker", len(deleteBroker.AllocateMap))
 
-		ccm.PermitBridgeQue = make(map[string]int)
-		ccm.PermitBridgeMap = make(map[string]map[uint64]bool) // 清空
-		ccm.PermitBridgeNum = 0
-		//ccm.PartitionMap = make(map[string]uint64)
-		ccm.NewActiveBridge = core.CreateSingleBridge()
-		ccm.NewIdleBridge = core.CreateSingleBridge()
+		ccm.PermitBrokerQue = make(map[string]int)
+		ccm.PermitBrokerMap = make(map[string]map[uint64]bool)
+		ccm.PermitBrokerNum = 0
+		ccm.NewActiveBroker = core.CreateSingleBroker()
+		ccm.NewIdleBroker = core.CreateSingleBroker()
 		ccm.IsUpdateFinished = true
-		//ccm.sl.Slog.Println("++++++++++++++++++++++++++++++++++++++ActiveBridge")
-		//for _, i := range ccm.ABridges.AdaptiveBridge.ActiveBridge.AddressQue {
-		//	ccm.sl.Slog.Println(i)
-		//}
-		//ccm.sl.Slog.Println("++++++++++++++++++++++++++++++++++++++IdleBridge")
-		//for _, i := range ccm.ABridges.AdaptiveBridge.IdleBridge.AddressQue {
-		//	ccm.sl.Slog.Println(i)
-		//}
 	}
 }
 
-func (ccm *ABCommitteeMod) handleABridgesType1Mes(bridgeType1Megs []*message.ABridgesType1Meg) {
+func (ccm *ABCommitteeMod) handleABrokersType1Mes(bridgeType1Megs []*message.ABrokersType1Meg) {
 	tx1s := make([]*core.Transaction, 0)
 	for _, brokerType1Meg := range bridgeType1Megs {
 		ctx := brokerType1Meg.RawMeg.Tx                                                     // cross-chain Tx
-		tx1 := core.NewTransaction(ctx.Sender, brokerType1Meg.Bridge, ctx.Value, ctx.Nonce) // 新建一个sender到broker的Tx
+		tx1 := core.NewTransaction(ctx.Sender, brokerType1Meg.Broker, ctx.Value, ctx.Nonce) //
 		tx1.OriginalSender = ctx.Sender
 		tx1.FinalRecipient = ctx.Recipient
 
@@ -597,28 +541,25 @@ func (ccm *ABCommitteeMod) handleABridgesType1Mes(bridgeType1Megs []*message.ABr
 		}
 
 		tx1s = append(tx1s, tx1)
-		confirm1 := &message.ABridgesMag1Confirm{
+		confirm1 := &message.ABrokersMag1Confirm{
 			RawMeg:  brokerType1Meg.RawMeg,
 			Tx1Hash: tx1.TxHash, // 新建tx的hash
 		}
 		ccm.bridgeModuleLock.Lock()
-		ccm.bridgeConfirm1Pool[string(tx1.TxHash)] = confirm1 // 加入 待确认的TX1 pool
+		ccm.bridgeConfirm1Pool[string(tx1.TxHash)] = confirm1
 		ccm.bridgeModuleLock.Unlock()
 	}
-	//ccm.sl.Slog.Println("TxSending 4")
 	ccm.txSending(tx1s)
-	ccm.sl.Slog.Printf("构建Sender->ABridges, 发送brokerTx1 * %d...", len(tx1s))
-	//ccm.sl.Slog.Println("ABridgesType1Mes received by shard,  add brokerTx1 len ", len(tx1s))
+	ccm.sl.Slog.Printf("create TX Sender->ABrokers, send brokerTx1 * %d...", len(tx1s))
 }
 
-func (ccm *ABCommitteeMod) handleABridgesType2Mes(brokerType2Megs []*message.ABridgesType2Meg) {
+func (ccm *ABCommitteeMod) handleABrokersType2Mes(brokerType2Megs []*message.ABrokersType2Meg) {
 	tx2s := make([]*core.Transaction, 0)
 	for _, mes := range brokerType2Megs {
 		ctx := mes.RawMeg.Tx
-		tx2 := core.NewTransaction(mes.Bridge, ctx.Recipient, ctx.Value, ctx.Nonce) // 新建从broker到接收方的Tx
+		tx2 := core.NewTransaction(mes.Broker, ctx.Recipient, ctx.Value, ctx.Nonce)
 		tx2.OriginalSender = ctx.Sender
 		tx2.FinalRecipient = ctx.Recipient
-		//SenderIsBridge = true
 
 		tx2.RawTxHash = make([]byte, len(ctx.TxHash))
 		copy(tx2.RawTxHash, ctx.TxHash)
@@ -632,7 +573,7 @@ func (ccm *ABCommitteeMod) handleABridgesType2Mes(brokerType2Megs []*message.ABr
 		}
 
 		tx2s = append(tx2s, tx2)
-		confirm2 := &message.ABridgesMag2Confirm{
+		confirm2 := &message.ABrokersMag2Confirm{
 			RawMeg:  mes.RawMeg,
 			Tx2Hash: tx2.TxHash,
 		}
@@ -642,12 +583,11 @@ func (ccm *ABCommitteeMod) handleABridgesType2Mes(brokerType2Megs []*message.ABr
 	}
 	//ccm.sl.Slog.Println("TxSending 5")
 	ccm.txSending(tx2s)
-	ccm.sl.Slog.Printf("构建ABridges->Recipient, 发送brokerTx2 * %d...", len(tx2s))
-	//ccm.sl.Slog.Println("brokerTx2 add to pool len ", len(tx2s))
+	ccm.sl.Slog.Printf("create TX ABrokers->Recipient, send brokerTx2 * %d...", len(tx2s))
 }
 
 // get the digest of rawMeg
-func (ccm *ABCommitteeMod) getABridgesRawMagDigest(r *message.ABridgesRawMeg) []byte {
+func (ccm *ABCommitteeMod) getABrokersRawMagDigest(r *message.ABrokersRawMeg) []byte {
 	b, err := json.Marshal(r)
 	if err != nil {
 		log.Panic(err)
@@ -656,75 +596,70 @@ func (ccm *ABCommitteeMod) getABridgesRawMagDigest(r *message.ABridgesRawMeg) []
 	return hash[:]
 }
 
-func (ccm *ABCommitteeMod) handleABridgesRawMag(bridgeRawMags []*message.ABridgesRawMeg) {
-	bridgeSet := ccm.ABridges
-	brokerType1Mags := make([]*message.ABridgesType1Meg, 0)
+func (ccm *ABCommitteeMod) handleABrokersRawMag(bridgeRawMags []*message.ABrokersRawMeg) {
+	bridgeSet := ccm.ABrokers
+	brokerType1Mags := make([]*message.ABrokersType1Meg, 0)
 	ccm.sl.Slog.Println("broker receive ctx ", len(bridgeRawMags))
 	ccm.bridgeModuleLock.Lock()
 	for _, meg := range bridgeRawMags {
-		bridgeSet.ABridgesRawMegs[string(ccm.getABridgesRawMagDigest(meg))] = meg // 加入map
+		bridgeSet.ABrokersRawMegs[string(ccm.getABrokersRawMagDigest(meg))] = meg // 加入map
 
-		brokerType1Mag := &message.ABridgesType1Meg{ // 将bridgeRawMags打包成brokerType1Mag
+		brokerType1Mag := &message.ABrokersType1Meg{
 			RawMeg:   meg,
-			Hcurrent: 0, // 当前高度？
-			Bridge:   meg.Bridge,
+			Hcurrent: 0,
+			Broker:   meg.Broker,
 		}
 		brokerType1Mags = append(brokerType1Mags, brokerType1Mag)
 	}
 	ccm.bridgeModuleLock.Unlock()
-	ccm.handleABridgesType1Mes(brokerType1Mags)
+	ccm.handleABrokersType1Mes(brokerType1Mags)
 }
 
-func (ccm *ABCommitteeMod) handleTx1ConfirmMag(mag1confirms []*message.ABridgesMag1Confirm) {
-	brokerType2Mags := make([]*message.ABridgesType2Meg, 0)
-	b := ccm.ABridges
+func (ccm *ABCommitteeMod) handleTx1ConfirmMag(mag1confirms []*message.ABrokersMag1Confirm) {
+	brokerType2Mags := make([]*message.ABrokersType2Meg, 0)
+	b := ccm.ABrokers
 
-	//ccm.sl.Slog.Println("receive confirm  brokerTx1 len ", len(mag1confirms))
 	ccm.sl.Slog.Printf("收到brokerTx1 * %d 的confirm...", len(mag1confirms))
 	ccm.bridgeModuleLock.Lock()
 	for _, mag1confirm := range mag1confirms {
 		RawMeg := mag1confirm.RawMeg
-		_, ok := b.ABridgesRawMegs[string(ccm.getABridgesRawMagDigest(RawMeg))]
+		_, ok := b.ABrokersRawMegs[string(ccm.getABrokersRawMagDigest(RawMeg))]
 		if !ok {
 			ccm.sl.Slog.Println("raw message is not exited,tx1 confirms failure !")
 			continue
 		}
-		//b.RawTx2ABridgesTx[string(RawMeg.Tx.TxHash)] = append(b.RawTx2ABridgesTx[string(RawMeg.Tx.TxHash)], string(mag1confirm.Tx1Hash))
 
 		rootTxHash := RawMeg.RootTxHash
-		b.RawTx2ABridgesTx[string(rootTxHash)] = append(b.RawTx2ABridgesTx[string(rootTxHash)], string(mag1confirm.Tx1Hash))
+		b.RawTx2ABrokersTx[string(rootTxHash)] = append(b.RawTx2ABrokersTx[string(rootTxHash)], string(mag1confirm.Tx1Hash))
 
-		brokerType2Mag := &message.ABridgesType2Meg{
-			//ABridges: ccm.targetBridge.Address, // 这里的bridge的选择问题
-			Bridge: RawMeg.Bridge, // 这里的bridge的选择问题
+		brokerType2Mag := &message.ABrokersType2Meg{
+			Broker: RawMeg.Broker,
 			RawMeg: RawMeg,
 		}
 		brokerType2Mags = append(brokerType2Mags, brokerType2Mag)
 	}
 	ccm.bridgeModuleLock.Unlock()
-	ccm.handleABridgesType2Mes(brokerType2Mags)
+	ccm.handleABrokersType2Mes(brokerType2Mags)
 }
 
-func (ccm *ABCommitteeMod) handleTx2ConfirmMag(mag2confirms []*message.ABridgesMag2Confirm) {
-	b := ccm.ABridges
-	//ccm.sl.Slog.Println("receive confirm  brokerTx2 len ", len(mag2confirms))
-	ccm.sl.Slog.Printf("收到brokerTx2 * %d 的confirm...", len(mag2confirms))
+func (ccm *ABCommitteeMod) handleTx2ConfirmMag(mag2confirms []*message.ABrokersMag2Confirm) {
+	b := ccm.ABrokers
+
+	ccm.sl.Slog.Printf("receive brokerTx2 * %d confirm...", len(mag2confirms))
 	num := 0
 	splitNum := 0
 	ccm.bridgeModuleLock.Lock()
 	for _, mag2confirm := range mag2confirms {
 		RawMeg := mag2confirm.RawMeg
 		rootTxHash := RawMeg.RootTxHash
-		b.RawTx2ABridgesTx[string(rootTxHash)] = append(b.RawTx2ABridgesTx[string(rootTxHash)], string(mag2confirm.Tx2Hash))
+		b.RawTx2ABrokersTx[string(rootTxHash)] = append(b.RawTx2ABrokersTx[string(rootTxHash)], string(mag2confirm.Tx2Hash))
 
-		if len(b.RawTx2ABridgesTx[string(rootTxHash)]) == 2 {
+		if len(b.RawTx2ABrokersTx[string(rootTxHash)]) == 2 {
 			num++
 		} else {
-			//ccm.sl.Slog.Println("存在splited-TXs, len =", len(b.RawTx2ABridgesTx[string(rootTxHash)]))
 			splitNum++
 		}
 	}
 	ccm.bridgeModuleLock.Unlock()
-	//ccm.sl.Slog.Println("finish ctx with adding tx1 and tx2 to txpool,len", num)
-	ccm.sl.Slog.Printf("完成跨分片Tx * %d / Resplited-TX * %d的添加", num, splitNum)
+	ccm.sl.Slog.Printf("Complete the addition of cross shard Tx * %d / Resplited-TX * %d", num, splitNum)
 }

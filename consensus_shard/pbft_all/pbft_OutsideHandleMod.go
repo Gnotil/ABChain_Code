@@ -42,7 +42,7 @@ func (pohm *PBFTOutsideHandleModule) handleSeqIDinfos(content []byte) {
 	}
 	pohm.pbftNode.pl.Plog.Printf("S%dN%d : has received SeqIDinfo from shard %d, the senderSeq is %d\n", pohm.pbftNode.ShardID, pohm.pbftNode.NodeID, sii.SenderShardID, sii.SenderSeq)
 	pohm.pbftNode.seqMapLock.Lock()
-	pohm.pbftNode.seqIDMap[sii.SenderShardID] = sii.SenderSeq // 其他分片发过来的消息
+	pohm.pbftNode.seqIDMap[sii.SenderShardID] = sii.SenderSeq // message from other shard
 	pohm.pbftNode.seqMapLock.Unlock()
 	pohm.pbftNode.pl.Plog.Printf("S%dN%d : has handled SeqIDinfo msg\n", pohm.pbftNode.ShardID, pohm.pbftNode.NodeID)
 }
@@ -56,31 +56,19 @@ func (pohm *PBFTOutsideHandleModule) handleInjectTx(content []byte) {
 	pohm.pbftNode.CurChain.Txpool.AddTxs2Pool(it.Txs)
 	pohm.pbftNode.pl.Plog.Printf("S%dN%d : has handled injected txs msg, epoch: %d txs: %d \n", pohm.pbftNode.ShardID, pohm.pbftNode.NodeID, it.Epoch, len(it.Txs))
 
-	// 把发过来的交易中的账户都存一遍(由于经过bridge，发过来的都是片内交易)
+	// Save the accounts of all incoming transactions (because they go through the broker, all incoming transactions are on-chip)
 	pohm.pbftNode.CurChain.Aslock.Lock()
 	for _, tx := range it.Txs {
-		senderIsExist, senderMainShard := pohm.pbftNode.CurChain.Get_AllocationMap(tx.Sender)                                           //senderIsExist
-		recipientIsExist, recipientMainShard := pohm.pbftNode.CurChain.Get_AllocationMap(tx.Recipient)                                  //recipientIsExist
-		if _, ok := pohm.pbftNode.CurChain.AccountState[tx.Sender]; !ok && !senderIsExist && senderMainShard == pohm.pbftNode.ShardID { // 原来不在账户列表里，且被分配到当前分片
+		senderIsExist, senderMainShard := pohm.pbftNode.CurChain.Get_AllocationMap(tx.Sender)          //senderIsExist
+		recipientIsExist, recipientMainShard := pohm.pbftNode.CurChain.Get_AllocationMap(tx.Recipient) //recipientIsExist
+		if _, ok := pohm.pbftNode.CurChain.AccountState[tx.Sender]; !ok && !senderIsExist && senderMainShard == pohm.pbftNode.ShardID {
 			state := core.ConstructAccount(tx.Sender, false)
 			pohm.pbftNode.CurChain.AccountState[tx.Sender] = state
 		}
-		if _, ok := pohm.pbftNode.CurChain.AccountState[tx.Recipient]; !ok && !recipientIsExist && recipientMainShard == pohm.pbftNode.ShardID { // 原来不在账户列表里，且被分配到当前分片
+		if _, ok := pohm.pbftNode.CurChain.AccountState[tx.Recipient]; !ok && !recipientIsExist && recipientMainShard == pohm.pbftNode.ShardID {
 			state := core.ConstructAccount(tx.Recipient, false)
 			pohm.pbftNode.CurChain.AccountState[tx.Recipient] = state
 		}
-		//if !senderIsExist {
-		//	pohm.pbftNode.CurChain.UpdateSingleAllo(tx.Sender, senderMainShard)
-		//}
-		//if !recipientIsExist {
-		//	pohm.pbftNode.CurChain.UpdateSingleAllo(tx.Recipient, recipientMainShard)
-		//}
-		//if !utils.InIntList(pohm.pbftNode.ShardID, senderShardList) && !utils.InIntList(pohm.pbftNode.ShardID, recipientShardList) {
-		//	pohm.pbftNode.pl.Plog.Println(senderIsExist, senderMainShard, senderShardList)
-		//	pohm.pbftNode.pl.Plog.Println(recipientIsExist, recipientMainShard, recipientShardList)
-		//	log.Panic()
-		//}
-
 	}
 	pohm.pbftNode.CurChain.Aslock.Unlock()
 }
@@ -94,24 +82,24 @@ func (pohm *PBFTOutsideHandleModule) handleMixUpdateMsg(content []byte) {
 	if err != nil {
 		log.Panic()
 	}
-	pohm.cdm.PartitionMap = append(pohm.cdm.PartitionMap, pm.PartitionModified) // 把partition map信息添加到ModifiedMap
-	pohm.cdm.NewBridgeMap = append(pohm.cdm.NewBridgeMap, pm.NewSingleBridge)   // 把partition map信息添加到ModifiedMap
+	pohm.cdm.PartitionMap = append(pohm.cdm.PartitionMap, pm.PartitionModified)
+	pohm.cdm.NewBrokerMap = append(pohm.cdm.NewBrokerMap, pm.NewSingleBroker)
 	// 设置MixUpdateCode
-	if len(pm.PartitionModified) != 0 && len(pm.NewSingleBridge.AddressQue) == 0 {
+	if len(pm.PartitionModified) != 0 && len(pm.NewSingleBroker.AddressQue) == 0 {
 		pohm.cdm.MixUpdateCode = 1
-	} else if len(pm.PartitionModified) == 0 && len(pm.NewSingleBridge.AddressQue) != 0 {
+	} else if len(pm.PartitionModified) == 0 && len(pm.NewSingleBroker.AddressQue) != 0 {
 		pohm.cdm.MixUpdateCode = 2
-	} else if len(pm.PartitionModified) != 0 && len(pm.NewSingleBridge.AddressQue) != 0 {
+	} else if len(pm.PartitionModified) != 0 && len(pm.NewSingleBroker.AddressQue) != 0 {
 		pohm.cdm.MixUpdateCode = 3
 	}
-	pohm.pbftNode.pl.Plog.Printf("S%dN%d : 收到MixUpdate信息，更新码%d\n", pohm.pbftNode.ShardID, pohm.pbftNode.NodeID, pohm.cdm.MixUpdateCode)
+	pohm.pbftNode.pl.Plog.Printf("S%dN%d : Received MixUpdate message, update code %d\n", pohm.pbftNode.ShardID, pohm.pbftNode.NodeID, pohm.cdm.MixUpdateCode)
 	pohm.pbftNode.CurChain.Aslock.Lock()
-	if pm.IsInit { // 初始化的时候，需要创建状态
-		for addr, shard := range pm.NewSingleBridge.AllocateMap {
+	if pm.IsInit { // When initializing, you need to create a state
+		for addr, shard := range pm.NewSingleBroker.AllocateMap {
 			if !utils.InMapKeys(pohm.pbftNode.ShardID, shard) {
 				_, ShardList := utils.GetMapShard(shard)
-				pohm.pbftNode.pl.Plog.Printf("当前分片%d与账户分布无关：", pohm.pbftNode.ShardID, ShardList)
-				log.Panic("账户发送错误")
+				pohm.pbftNode.pl.Plog.Printf("The current shard %d is not the associated shard of the account", pohm.pbftNode.ShardID, ShardList)
+				log.Panic("")
 			}
 			mainShard, _ := utils.GetMapShard(shard)
 			if _, ok := pohm.pbftNode.CurChain.AccountState[addr]; !ok && mainShard == pohm.pbftNode.ShardID {
@@ -149,7 +137,7 @@ func (pohm *PBFTOutsideHandleModule) handleMixUpdateTxsFromOtherShard(content []
 		log.Panic()
 	}
 	pohm.cdm.AccountStateTx[at.FromShard] = at
-	pohm.pbftNode.pl.Plog.Printf("S%dN%d: 收到分片S%d的状态数：%d", pohm.pbftNode.ShardID, pohm.pbftNode.NodeID, at.FromShard, len(at.AccountState))
+	pohm.pbftNode.pl.Plog.Printf("S%dN%d: Number of states received by shard S%d : %d", pohm.pbftNode.ShardID, pohm.pbftNode.NodeID, at.FromShard, len(at.AccountState))
 
 	if len(pohm.cdm.AccountStateTx) == int(pohm.pbftNode.pbftChainConfig.ShardNums)-1 {
 		pohm.cdm.CollectLock.Lock()

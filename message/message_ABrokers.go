@@ -9,9 +9,9 @@ var (
 	CrInner2CrossTx MessageType = "innerShardTx_be_crossShard"
 )
 
-type ABridgesRawMeg struct {
+type ABrokersRawMeg struct {
 	Tx        *core.Transaction
-	Bridge    utils.Address
+	Broker    utils.Address
 	Hlock     uint64 //ignore
 	Snonce    uint64 //ignore
 	Bnonce    uint64 //ignore
@@ -20,31 +20,31 @@ type ABridgesRawMeg struct {
 	RootTxHash []byte
 }
 
-type ABridgesType1Meg struct {
-	RawMeg   *ABridgesRawMeg
+type ABrokersType1Meg struct {
+	RawMeg   *ABrokersRawMeg
 	Hcurrent uint64        //ignore
-	Bridge   utils.Address // replace signature of bridge
+	Broker   utils.Address // replace signature of bridge
 }
 
-type ABridgesMag1Confirm struct {
+type ABrokersMag1Confirm struct {
 	//RawDigest string
 	Tx1Hash []byte
-	RawMeg  *ABridgesRawMeg
+	RawMeg  *ABrokersRawMeg
 }
 
-type ABridgesType2Meg struct {
-	RawMeg *ABridgesRawMeg
-	Bridge utils.Address // replace signature of bridge
+type ABrokersType2Meg struct {
+	RawMeg *ABrokersRawMeg
+	Broker utils.Address // replace signature of bridge
 }
 
-type ABridgesMag2Confirm struct {
+type ABrokersMag2Confirm struct {
 	//RawDigest string
 	Tx2Hash []byte
-	RawMeg  *ABridgesRawMeg
+	RawMeg  *ABrokersRawMeg
 }
 
-type ABridgesTxMap struct {
-	ABridgesTx2ABridges12 map[string][]string // map: raw bridge tx to its bridge1Tx and bridge2Tx
+type ABrokersTxMap struct {
+	ABrokersTx2ABrokers12 map[string][]string // map: raw bridge tx to its bridge1Tx and bridge2Tx
 }
 
 type InnerTx2CrossTx struct {

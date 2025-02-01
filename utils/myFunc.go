@@ -55,7 +55,7 @@ func Variance(input []int) (float64, float64, float64) {
 }
 
 func InIntList(i uint64, list []uint64) bool {
-	if params.GlobalABridges && len(list) > 1 {
+	if params.GlobalABrokers && len(list) > 1 {
 		return true
 	}
 	for _, idx := range list {
@@ -66,7 +66,7 @@ func InIntList(i uint64, list []uint64) bool {
 	return false
 }
 func InMapKeys(i uint64, maps map[uint64]bool) bool {
-	if params.GlobalABridges && len(maps) > 1 {
+	if params.GlobalABrokers && len(maps) > 1 {
 		return true
 	}
 	for s, _ := range maps {
@@ -78,7 +78,7 @@ func InMapKeys(i uint64, maps map[uint64]bool) bool {
 }
 
 func GetIntersection(nums1, nums2 []uint64) []uint64 {
-	if params.GlobalABridges && len(nums1) > 1 && len(nums2) > 1 {
+	if params.GlobalABrokers && len(nums1) > 1 && len(nums2) > 1 {
 		return nums1
 	}
 	m := make(map[uint64]uint64, 0)
@@ -117,10 +117,10 @@ func GetMapShard(shardMap map[uint64]bool) (uint64, []uint64) {
 		}
 	}
 	if cnt > 1 {
-		log.Panic("myFunc：有超过一个shard为mainShard")
+		log.Panic("myFunc：more than one mainShard")
 	}
 	if len(shardMap) != 0 && cnt == 0 {
-		log.Panic("myFunc：没有mainShard")
+		log.Panic("myFunc：no mainShard")
 	}
 	return mainShard, shardList
 }

@@ -54,7 +54,7 @@ func (d *Supervisor) NewSupervisor(ip string, pcc *params.ChainConfig, committee
 	d.Ss = signal.NewStopSignal(2 * int(pcc.ShardNums))
 
 	switch committeeMethod {
-	case "AdaptiveBridges":
+	case "AdaptiveBrokers":
 		d.comMod = committee.NewABCommitteeMod(d.Ip_nodeTable, d.Ss, d.sl, params.FileInputSet, params.FileIndexBegin,
 			params.FileIndexEnd, params.TotalDataSize, params.BatchSize, params.ReconfigTimeGap)
 	}
@@ -89,41 +89,15 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 	}
 	// StopSignal check
 	if bim.BlockBodyLength == 0 {
-		//d.sl.Slog.Println("bim.BlockBodyLength =", bim.BlockBodyLength, "Gap++")
 		d.Ss.StopGap_Inc()
 	} else {
-		//d.sl.Slog.Println("bim.BlockBodyLength =", bim.BlockBodyLength, "GapReset")
 		d.Ss.StopGap_Reset()
 	}
 	d.comMod.HandleBlockInfo(bim)
 
 	// measure update
-	//d.sl.Slog.Println("----------------------------\n开始测试记录信息\n----------------------------")
 	for _, measureMod := range d.testMeasureMods { // 遍历4种 measureMod
 		measureMod.UpdateMeasureRecord(bim)
-
-		//switch measureMod.OutputMetricName() {
-		//case "LoadBalance":
-		//	shardLoad := d.comMod.GetShardLoadMap()
-		//	shardLoad = shardLoad[:len(shardLoad)-4]
-		//	measureMod.UpdateMeasureRecordWithSet(bim, shardLoad)
-		//case "Tx_number":
-		//	BrokerNum := d.comMod.GetShardLoadMap()
-		//	BrokerNum = []int{BrokerNum[len(BrokerNum)-4], BrokerNum[len(BrokerNum)-3], BrokerNum[len(BrokerNum)-2], BrokerNum[len(BrokerNum)-1]}
-		//	measureMod.UpdateMeasureRecordWithSet(bim, BrokerNum)
-		//default:
-		//	measureMod.UpdateMeasureRecord(bim) // 开始记录 测试信息
-		//}
-		//if measureMod.OutputMetricName() == "LoadBalance" {
-		//	shardLoad := d.comMod.GetShardLoadMap()
-		//	measureMod.UpdateMeasureRecordWithSet(bim, shardLoad)
-		//}
-		//if measureMod.OutputMetricName() == "LoadBalance" {
-		//	shardLoad := d.comMod.GetShardLoadMap()
-		//	measureMod.UpdateMeasureRecordWithSet(bim, shardLoad)
-		//} else {
-		//	measureMod.UpdateMeasureRecord(bim) // 开始记录 测试信息
-		//}
 	}
 	// add codes here ...
 }

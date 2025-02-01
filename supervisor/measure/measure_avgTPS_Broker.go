@@ -140,7 +140,7 @@ func (tat *TestModule_avgTPS_Broker) writeToCSV() {
 		strconv.Itoa(IntArraySum(tat.normalTxNum)),
 		strconv.Itoa(IntArraySum(tat.broker1TxNum)),
 		strconv.Itoa(IntArraySum(tat.broker2TxNum)),
-		strconv.Quote(tat.startTime[1].String()),
+		strconv.Quote(tat.startTime[0].String()),
 		strconv.Quote(tat.endTime[len(tat.endTime)-1].String()),
 		//strconv.FormatInt(tat.startTime[1].UnixMilli(), 10),
 		//strconv.FormatInt(tat.endTime[len(tat.endTime)-1].UnixMilli(), 10),

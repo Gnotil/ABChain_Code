@@ -31,7 +31,7 @@ type BlockChain struct {
 	pmlock sync.RWMutex
 
 	AllocationMap map[string]uint64 // 使用map去重
-	ABridges      core.Bridge
+	ABrokers      core.Broker
 	AccountState  map[string]*core.AccountState // 账户在本分片是否有状态
 	Aslock        sync.RWMutex
 }
@@ -46,23 +46,6 @@ func GetTxTreeRoot(txs []*core.Transaction) []byte {
 	}
 	return transactionTree.Hash().Bytes()
 }
-
-// Write Partition Map
-//func (bc *BlockChain) Update_PartitionMap(key string, val uint64) {
-//	bc.pmlock.Lock()
-//	defer bc.pmlock.Unlock()
-//	bc.PartitionMap[key] = val
-//}
-
-// Get parition (if not exist, return default)
-//func (bc *BlockChain) Get_PartitionMap(key string) uint64 {
-//	bc.pmlock.RLock()
-//	defer bc.pmlock.RUnlock()
-//	if _, ok := bc.PartitionMap[key]; !ok {
-//		return uint64(utils.Addr2Shard(key))
-//	}
-//	return bc.PartitionMap[key]
-//}
 
 // Send a transaction to the pool (need to decide which pool should be sended)
 func (bc *BlockChain) SendTx2Pool(txs []*core.Transaction) {
@@ -97,9 +80,9 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 		// senderIn := false
 		_, senderMainShard := bc.Get_AllocationMap(tx.Sender)
 		_, recipientMainShard := bc.Get_AllocationMap(tx.Recipient)
-		SenderIsBridge := bc.ABridges.IsBridge(tx.Sender) == 1
-		RecipientIsBridge := bc.ABridges.IsBridge(tx.Recipient) == 1 // active
-		if !tx.Relayed && (senderMainShard == bc.ChainConfig.ShardID || (SenderIsBridge || RecipientIsBridge)) {
+		SenderIsBroker := bc.ABrokers.IsBroker(tx.Sender) == 1
+		RecipientIsBroker := bc.ABrokers.IsBroker(tx.Recipient) == 1 // active
+		if !tx.Relayed && (senderMainShard == bc.ChainConfig.ShardID || (SenderIsBroker || RecipientIsBroker)) {
 			// senderIn = true
 			// fmt.Printf("the sender %s is in this shard %d, \n", tx.Sender, bc.ChainConfig.ShardID)
 			// modify local accountstate
@@ -124,7 +107,7 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 		}
 		// recipientIn := false
 
-		if recipientMainShard == bc.ChainConfig.ShardID || (SenderIsBridge || RecipientIsBridge) {
+		if recipientMainShard == bc.ChainConfig.ShardID || (SenderIsBroker || RecipientIsBroker) {
 			// fmt.Printf("the recipient %s is in this shard %d, \n", tx.Recipient, bc.ChainConfig.ShardID)
 			// recipientIn = true
 			// modify local state
@@ -242,19 +225,18 @@ func (bc *BlockChain) AddBlock(b *core.Block) {
 // the ChainConfig is pre-defined to identify the blockchain; the db is the status trie database in disk
 func NewBlockChain(cc *params.ChainConfig, db ethdb.Database) (*BlockChain, error) {
 	fmt.Println("BlockChain.NewBlockChain: Generating a new blockchain", db)
-	ABridges := new(core.Bridge)
-	ABridges.NewBridge()
-	if params.InitBridgeMod[0:4] == "Code" {
-		NewActiveBridge := core.InitBrokerAddr(params.ABridgesInitNum, params.InitBridgeMod)
-		ABridges.UpdateBridgeMap(NewActiveBridge)
-	}
+	ABrokers := new(core.Broker)
+	ABrokers.NewBroker()
+	NewActiveBroker := core.InitBrokerAddr(params.ABrokersInitNum, params.InitBrokerMod)
+	ABrokers.UpdateBrokerMap(NewActiveBroker)
+
 	bc := &BlockChain{
 		db:            db,
 		ChainConfig:   cc,
 		Txpool:        core.NewTxPool(),
 		Storage:       storage.NewStorage(cc),
 		AllocationMap: make(map[string]uint64),
-		ABridges:      *ABridges,
+		ABrokers:      *ABrokers,
 		AccountState:  make(map[string]*core.AccountState),
 	}
 	curHash, err := bc.Storage.GetNewestBlockHash()
@@ -264,7 +246,7 @@ func NewBlockChain(cc *params.ChainConfig, db ethdb.Database) (*BlockChain, erro
 		IsSubAccount: false,
 		Nonce:        0,
 	}
-	accountState.Encode() // 事先调用一下
+	accountState.Encode() // Call ahead
 
 	if err != nil {
 		fmt.Println("BlockChain.NewBlockChain: Get newest block hash err")
@@ -321,7 +303,6 @@ func (bc *BlockChain) IsValidBlock(b *core.Block) error {
 // add accounts
 func (bc *BlockChain) AddAccounts(addrState []*core.AccountState) {
 	fmt.Printf("BlockChain.AddAccounts: The len of accounts is %d, now adding the accounts\n", len(addrState))
-	//fmt.Println("创建新block时，ParentBlockHash为：", bc.CurrentBlock.Hash)
 	bh := &core.BlockHeader{
 		ParentBlockHash: bc.CurrentBlock.Hash,
 		Number:          bc.CurrentBlock.Header.Number + 1,
@@ -329,40 +310,28 @@ func (bc *BlockChain) AddAccounts(addrState []*core.AccountState) {
 	}
 	// handle transactions to build root
 	rt := common.BytesToHash(bc.CurrentBlock.Header.StateRoot)
-	//fmt.Println("检查rt：", rt.Bytes())
 	if len(addrState) != 0 {
 		st, err := trie.New(trie.TrieID(common.BytesToHash(bc.CurrentBlock.Header.StateRoot)), bc.triedb)
 		if err != nil {
 			log.Panic(err)
 		}
-		//fmt.Println("检查st：", st.Hash())
 		for i, state := range addrState {
 			addr := state.Address
 			_, mainShard := bc.Get_AllocationMap(addr)
-			_, addrShardList := bc.ABridges.GetBridgeShardList(addr)
+			_, addrShardList := bc.ABrokers.GetBrokerShardList(addr)
 			if len(addrShardList) == 0 {
 				addrShardList = []uint64{mainShard}
 			}
 			//if addrMainShard == bc.ChainConfig.ShardID
-			if utils.InIntList(bc.ChainConfig.ShardID, addrShardList) { // addr被分配到当前分片
-				//ib := new(big.Int)
-				//ib.Add(ib, params.Init_Balance2) // ib 余额
-				//new_state := &core.AccountState{
-				//	Address:      "addr",
-				//	IsSubAccount: true,
-				//	Balance:      ib,
-				//	Nonce:        0,
-				//}
-				//addrState[i].PrintAccountState()
+			if utils.InIntList(bc.ChainConfig.ShardID, addrShardList) { // addr is assigned to the current shard
 				err := st.Update([]byte(addr), addrState[i].Encode())
-				//fmt.Println("st更新", i, "/", len(addrState), ": ", st.Hash(),"\n")
 				if err != nil {
 					return
 				}
 			}
 		}
 		rrt, ns := st.Commit(false)
-		if ns != nil { //fmt.Println("检查rrt：", rrt.Bytes())
+		if ns != nil {
 			err = bc.triedb.Update(trie.NewWithNodeSet(ns))
 			if err != nil {
 				log.Panic(err)

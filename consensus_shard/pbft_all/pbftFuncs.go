@@ -100,19 +100,19 @@ func computeTCL(txs []*core.Transaction, commitTS time.Time) int64 {
 	return ret
 }
 
-func (pihm *PBFTInsideHandleModule) getSafeAllo(addr string, PartitionMap map[string]uint64, FutureActiveBridge, FutureIdleBridge *core.SingleBridge) (uint64, []uint64) {
+func (pihm *PBFTInsideHandleModule) getSafeAllo(addr string, PartitionMap map[string]uint64, FutureActiveBroker, FutureIdleBroker *core.SingleBroker) (uint64, []uint64) {
 	_, mainShard := pihm.pbftNode.CurChain.Get_AllocationMap(addr)
 	shardList := []uint64{mainShard}
 	if _, ok := PartitionMap[addr]; ok {
 		mainShard = PartitionMap[addr]
 	}
 
-	if len(FutureActiveBridge.AddressQue) != 0 {
-		if _, ok1 := FutureActiveBridge.AllocateMap[addr]; ok1 {
-			_, slist := utils.GetMapShard(FutureActiveBridge.AllocateMap[addr])
+	if len(FutureActiveBroker.AddressQue) != 0 {
+		if _, ok1 := FutureActiveBroker.AllocateMap[addr]; ok1 {
+			_, slist := utils.GetMapShard(FutureActiveBroker.AllocateMap[addr])
 			shardList = utils.GetIntersection(shardList, slist)
-		} else if _, ok2 := FutureIdleBridge.AllocateMap[addr]; ok2 {
-			_, slist := utils.GetMapShard(FutureIdleBridge.AllocateMap[addr])
+		} else if _, ok2 := FutureIdleBroker.AllocateMap[addr]; ok2 {
+			_, slist := utils.GetMapShard(FutureIdleBroker.AllocateMap[addr])
 			shardList = utils.GetIntersection(shardList, slist)
 		} else {
 			shardList = []uint64{mainShard}
@@ -121,36 +121,20 @@ func (pihm *PBFTInsideHandleModule) getSafeAllo(addr string, PartitionMap map[st
 	return mainShard, shardList
 }
 
-func (pihm *PBFTInsideHandleModule) getNewAllo(addr string, PartitionMap map[string]uint64, FutureActiveBridge, FutureIdleBridge *core.SingleBridge) (uint64, []uint64) {
+func (pihm *PBFTInsideHandleModule) getNewAllo(addr string, PartitionMap map[string]uint64, FutureActiveBroker, FutureIdleBroker *core.SingleBroker) (uint64, []uint64) {
 	_, mainShard := pihm.pbftNode.CurChain.Get_AllocationMap(addr)
 	shardList := []uint64{mainShard}
 	if _, ok := PartitionMap[addr]; ok {
 		mainShard = PartitionMap[addr]
 	}
 
-	if _, ok1 := FutureActiveBridge.AllocateMap[addr]; ok1 {
-		_, shardList = utils.GetMapShard(FutureActiveBridge.AllocateMap[addr])
-	} else if _, ok2 := FutureIdleBridge.AllocateMap[addr]; ok2 {
-		_, shardList = utils.GetMapShard(FutureIdleBridge.AllocateMap[addr])
+	if _, ok1 := FutureActiveBroker.AllocateMap[addr]; ok1 {
+		_, shardList = utils.GetMapShard(FutureActiveBroker.AllocateMap[addr])
+	} else if _, ok2 := FutureIdleBroker.AllocateMap[addr]; ok2 {
+		_, shardList = utils.GetMapShard(FutureIdleBroker.AllocateMap[addr])
 	} else {
 		shardList = []uint64{mainShard}
 	}
 
 	return mainShard, shardList
 }
-
-//func (pihm *PBFTInsideHandleModule) getActiveAllo(addr string, PartitionMap map[string]uint64, FutureActiveBridge, FutureIdleBridge *core.SingleBridge) (uint64, []uint64) {
-//	_, mainShard := pihm.pbftNode.CurChain.Get_AllocationMap(addr)
-//	shardList := []uint64{mainShard}
-//	if _, ok := PartitionMap[addr]; ok {
-//		mainShard = PartitionMap[addr]
-//	}
-//
-//	if _, ok1 := FutureActiveBridge.AllocateMap[addr]; ok1 {
-//		_, shardList = utils.GetMapShard(FutureActiveBridge.AllocateMap[addr])
-//	} else {
-//		shardList = []uint64{mainShard}
-//	}
-//
-//	return mainShard, shardList
-//}

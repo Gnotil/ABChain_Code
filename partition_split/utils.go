@@ -83,12 +83,6 @@ func topCLargestKeys(m map[Vertex]int, c int) []Vertex {
 
 //========================================================================================
 
-// Vertex 定义为 int 类型，你可以根据实际需求调整
-//type Vertex int
-
-// Edge 定义为 []Vertex 类型，用于表示图的边
-//type Edge []Vertex
-
 // Item 定义了堆中的元素，包含 Vertex 和其对应的 []Vertex 长度
 type Item struct {
 	vertex Vertex
@@ -114,7 +108,6 @@ func (h *ByLength) Pop() interface{} {
 	return x
 }
 
-// getTop10LongestEdges 找出 map[Vertex][]Vertex 中 []Vertex 长度最长的前n个 Vertex
 func getTopNLongestEdges(graph map[Vertex][]Vertex, n int) []Vertex {
 	h := &ByLength{}
 	heap.Init(h)

@@ -19,7 +19,7 @@ var (
 // -------------- split
 type A2C_MixUpdateMsgStruct struct {
 	PartitionModified map[string]uint64
-	NewSingleBridge   *core.SingleBridge
+	NewSingleBroker   *core.SingleBroker
 	IsInit            bool
 }
 
@@ -32,7 +32,7 @@ func (uaq *A2C_MixUpdateMsgStruct) Encode() []byte {
 	}
 	return buff.Bytes()
 }
-func DecodeABridgesMsg(content []byte) *A2C_MixUpdateMsgStruct {
+func DecodeABrokersMsg(content []byte) *A2C_MixUpdateMsgStruct {
 	var uaq A2C_MixUpdateMsgStruct
 
 	decoder := gob.NewDecoder(bytes.NewReader(content))
@@ -46,7 +46,7 @@ func DecodeABridgesMsg(content []byte) *A2C_MixUpdateMsgStruct {
 
 // -------------- split
 type AccountMixUpdateMsg struct {
-	SingleBridge *core.SingleBridge
+	SingleBroker *core.SingleBroker
 	PartitionMap map[string]uint64
 
 	Addrs        []string

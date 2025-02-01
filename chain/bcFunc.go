@@ -30,17 +30,17 @@ func (bc *BlockChain) Update_AllocationMap(mmap map[string]uint64) {
 	}
 }
 
-// Write Bridge Map
-func (bc *BlockChain) Update_BridgeMap(NewSingleBridge *core.SingleBridge) *core.SingleBridge {
+// Write Broker Map
+func (bc *BlockChain) Update_BrokerMap(NewSingleBroker *core.SingleBroker) *core.SingleBroker {
 	bc.pmlock.Lock()
 	defer bc.pmlock.Unlock()
-	delBridge := bc.ABridges.UpdateBridgeMap(NewSingleBridge)
-	return delBridge
+	delBroker := bc.ABrokers.UpdateBrokerMap(NewSingleBroker)
+	return delBroker
 }
 
 // Get parition (if not exist, return default)
-func (bc *BlockChain) Get_BridgeMap() core.Bridge {
+func (bc *BlockChain) Get_BrokerMap() core.Broker {
 	bc.pmlock.RLock()
 	defer bc.pmlock.RUnlock()
-	return bc.ABridges
+	return bc.ABrokers
 }

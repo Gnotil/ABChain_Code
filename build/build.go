@@ -20,7 +20,7 @@ func initConfig(nid, nnm, sid, snm uint64) *params.ChainConfig {
 		}
 	}
 	params.IPmap_nodeTable[params.DeciderShard] = make(map[uint64]string)
-	params.IPmap_nodeTable[params.DeciderShard][0] = params.SupervisorAddr // DeciderShard的0号节点就是Supervisor
+	params.IPmap_nodeTable[params.DeciderShard][0] = params.SupervisorAddr // DeciderShard's node 0 is the Supervisor
 	params.NodesInShard = int(nnm)
 	params.ShardNum = int(snm)
 
