@@ -234,6 +234,7 @@ func (pihm *PBFTInsideHandleModule) HandleinCommit(cmsg *message.Commit) bool {
 			ProposeTime:     r.ReqTime,
 			CommitTime:      time.Now(),
 			//PendingTXs:      pihm.pbftNode.CurChain.Txpool.TxQueue, //
+			PendingTXsNum: len(pihm.pbftNode.CurChain.Txpool.TxQueue),
 		}
 		bByte, err := json.Marshal(bim)
 		if err != nil {

@@ -21,6 +21,9 @@ type ABState struct {
 	ShardEdgeNum      []int          // shardID → edge num
 	ShardVertexNum    []int          // shardID → Vertex数
 
+	ShardTXPoolSize []int
+	//ShardTXPoolSizeLock sync.RWMutex
+
 	//EdgeSetWithWeight map[Vertex]map[Vertex]int
 
 	WeightPenalty     float64 // Weight penalty, corresponding to \beta in the paper
@@ -47,6 +50,7 @@ func (cs *ABState) Init_ABState(wp float64, mIter, sn int) {
 	cs.ShardCrossEdgeNum = make([]int, cs.ShardNum)
 	cs.ShardInnerEdgeNum = make([]int, cs.ShardNum)
 	cs.ShardEdgeNum = make([]int, cs.ShardNum)
+	cs.ShardTXPoolSize = make([]int, cs.ShardNum)
 	//cs.EdgeSetWithWeight = make(map[Vertex]map[Vertex]int)
 }
 
@@ -152,6 +156,9 @@ func (cs *ABState) ShardLoadRecompute(v Vertex, oldShardID int) {
 		}
 		cs.AvgShardEdgeNum += float64(val)
 	}
+	for _, ptxs := range cs.ShardTXPoolSize { // 考虑每个分片的 pending-TXs
+		cs.AvgShardEdgeNum += float64(ptxs)
+	}
 	cs.AvgShardEdgeNum /= float64(cs.ShardNum)
 }
 
@@ -170,7 +177,7 @@ func (cs *ABState) getCorrelationScore(v Vertex) (int, float64) {
 	var maxScoreShard int
 	for i := 0; i < cs.ShardNum; i++ {
 		shardScore[i] = (float64(connToShard[i]) / float64(v_connNum)) *
-			math.Pow(cs.AvgShardEdgeNum/float64(cs.ShardEdgeNum[i]), params.ScorePower)
+			math.Pow(cs.AvgShardEdgeNum/float64(cs.ShardEdgeNum[i]+cs.ShardTXPoolSize[uint64(i)]), params.ScorePower)
 		if maxScore < shardScore[i] {
 			maxScore = shardScore[i]
 			maxScoreShard = i

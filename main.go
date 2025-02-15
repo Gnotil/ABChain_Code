@@ -3,7 +3,6 @@ package main
 import (
 	"blockEmulator/build"
 	"blockEmulator/params"
-	"fmt"
 	"github.com/spf13/pflag"
 	"runtime"
 )
@@ -28,10 +27,6 @@ var (
 	isGen                bool
 	isGenerateForExeFile bool
 )
-
-func main2() {
-	fmt.Println(params.InitBridgeMod[0:4])
-}
 
 func main() {
 	pflag.IntVarP(&shardNum, "shardNum", "S", params.ShardNum, "shardNum is an Integer, which indicates that how many shards are deployed. ")

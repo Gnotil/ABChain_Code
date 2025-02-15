@@ -103,7 +103,8 @@ type BlockInfoMsg struct {
 	Broker1Txs []*core.Transaction // cross transactions at first time by broker
 	Broker2Txs []*core.Transaction // cross transactions at second time by broker
 
-	PendingTXs []*core.Transaction // txs which are excuted completely
+	PendingTXs    []*core.Transaction // txs which are excuted completely
+	PendingTXsNum int                 // txs which are excuted completely
 }
 
 type SeqIDinfo struct {

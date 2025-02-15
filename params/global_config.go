@@ -25,6 +25,14 @@ var (
 )
 
 var (
+	// if InjectSpeed is Variable
+	VariableSpeed = false
+	VariableRate  = 2
+	PTxWeight     = 2 // pending TXs的权重
+	JamShreshold  = 3.0
+)
+
+var (
 	FileInput0     = `../DataTX/0to999999_BlockTransaction.csv`
 	FileInput1     = `../DataTX/1000000to1999999_BlockTransaction.csv`
 	FileInput2     = `../../GoCode/DataTX/2000000to2999999_BlockTransaction.csv`
@@ -50,8 +58,6 @@ var (
 	MaxIterations = 25
 	ScorePower    = 4.0 //default 5
 	COPRA_v       = 2.0
-
-	PTxWeight = 0
 
 	CandidateNum = 10
 

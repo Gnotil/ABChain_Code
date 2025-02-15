@@ -41,6 +41,7 @@ type ABCommitteeMod struct {
 	abLock            sync.Mutex
 	abGraph           *partition_split.ABState
 	abLastRunningTime time.Time
+	abLastVaryTime    time.Time
 	abFreq            int
 
 	ABrokers      *broker.ABrokers
@@ -50,7 +51,6 @@ type ABCommitteeMod struct {
 
 	bridgeConfirm1Pool map[string]*message.ABrokersMag1Confirm
 	bridgeConfirm2Pool map[string]*message.ABrokersMag2Confirm
-	bridgeTxPool       []*core.Transaction
 	bridgeModuleLock   sync.Mutex
 
 	// logger module
@@ -102,9 +102,9 @@ func NewABCommitteeMod(Ip_nodeTable map[uint64]map[uint64]string, Ss *signal.Sto
 		AllocationMap:      make(map[string]uint64),
 		abFreq:             abFrequency,
 		abLastRunningTime:  time.Time{},
+		abLastVaryTime:     time.Time{},
 		bridgeConfirm1Pool: make(map[string]*message.ABrokersMag1Confirm),
 		bridgeConfirm2Pool: make(map[string]*message.ABrokersMag2Confirm),
-		bridgeTxPool:       make([]*core.Transaction, 0),
 		ABrokers:           ABrokers,
 
 		IpNodeTable:      Ip_nodeTable,
@@ -167,6 +167,9 @@ func (ccm *ABCommitteeMod) MsgSendingControl() {
 				if ccm.abLastRunningTime.IsZero() {
 					ccm.abLastRunningTime = time.Now()
 				}
+				if ccm.abLastVaryTime.IsZero() {
+					ccm.abLastVaryTime = time.Now()
+				}
 				itx := ccm.dealTxByABrokers(txlist)
 				ccm.txSending(itx)
 				// reset the variants about tx sending
@@ -177,7 +180,6 @@ func (ccm *ABCommitteeMod) MsgSendingControl() {
 			if !ccm.abLastRunningTime.IsZero() && time.Since(ccm.abLastRunningTime) >= time.Duration(ccm.abFreq)*time.Second {
 				ccm.abLock.Lock()
 				ccm.abCnt++
-				ccm.AddPendingTXs() // Add suspended transactions to the graph (note: not use!!!)
 				mmap := ccm.abGraph.ABPartition_flpa()
 				//mmap, _ := ccm.abGraph.CLPA_Partition()
 				ccm.sl.Slog.Println("====== UpdateAllocationMap")
@@ -225,7 +227,6 @@ func (ccm *ABCommitteeMod) MsgSendingControl() {
 		if time.Since(ccm.abLastRunningTime) >= time.Duration(ccm.abFreq)*time.Second {
 			ccm.abLock.Lock()
 			ccm.abCnt++
-			ccm.AddPendingTXs()
 			mmap := ccm.abGraph.ABPartition_flpa()
 			//mmap, _ := ccm.abGraph.CLPA_Partition()
 			//mmap := make(map[string]uint64)
@@ -306,9 +307,15 @@ func (ccm *ABCommitteeMod) dealTxByABrokers(txs []*core.Transaction) (itxs []*co
 func (ccm *ABCommitteeMod) txSending(txlist []*core.Transaction) {
 	// the txs will be sent
 	sendToShard := make(map[uint64][]*core.Transaction)
-
+	VariableSpeed := params.InjectSpeed
+	if params.VariableSpeed {
+		if !ccm.abLastVaryTime.IsZero() && time.Since(ccm.abLastVaryTime) >= time.Duration(ccm.abFreq*2)*time.Second {
+			VariableSpeed = params.InjectSpeed * params.VariableRate
+			ccm.abLastVaryTime = time.Now()
+		}
+	}
 	for idx := 0; idx <= len(txlist); idx++ {
-		if idx > 0 && (idx%params.InjectSpeed == 0 || idx == len(txlist)) {
+		if idx > 0 && (idx%VariableSpeed == 0 || idx == len(txlist)) {
 			// send to shard
 			for sid := uint64(0); sid < uint64(params.ShardNum); sid++ { // 0 ~ ShardNum
 				it := message.InjectTxs{
@@ -378,7 +385,7 @@ func (ccm *ABCommitteeMod) abMixUpdateMsgSend(mmap map[string]uint64, nab *core.
 	for shard := uint64(0); shard < uint64(params.ShardNum); shard++ {
 		// send to worker shards
 		ccm.sl.Slog.Printf("%d Partition item and %d New Broker, send to shard%d.\n", len(nbq.PartitionModified), len(nbq.NewSingleBroker.AddressQue), shard)
-		networks.TcpDial(send_msg, ccm.IpNodeTable[shard][0])
+		go networks.TcpDial(send_msg, ccm.IpNodeTable[shard][0])
 	}
 	ccm.sl.Slog.Println("Supervisor: all MixUpdate message has been sent. ")
 }
@@ -432,24 +439,10 @@ func (ccm *ABCommitteeMod) HandleBlockInfo(b *message.BlockInfoMsg) {
 	for _, b1tx := range b.Broker1Txs {
 		ccm.abGraph.AddEdge(partition_split.Vertex{Addr: b1tx.OriginalSender}, partition_split.Vertex{Addr: b1tx.FinalRecipient})
 	}
+	//ccm.abGraph.ShardTXPoolSizeLock.Lock()
+	ccm.abGraph.ShardTXPoolSize[b.SenderShardID] = b.PendingTXsNum //写入 TXPoolSize
+	//ccm.abGraph.ShardTXPoolSizeLock.Unlock()
 	ccm.abLock.Unlock()
-}
-
-func (ccm *ABCommitteeMod) AddPendingTXs() {
-	for i := 0; i < params.PTxWeight; i++ {
-		for _, ptx := range ccm.bridgeTxPool {
-			isBroker1Tx := ptx.Sender == ptx.OriginalSender
-			isBroker2Tx := ptx.Recipient == ptx.FinalRecipient
-
-			if isBroker1Tx {
-				ccm.abGraph.AddEdge(partition_split.Vertex{Addr: ptx.OriginalSender}, partition_split.Vertex{Addr: ptx.FinalRecipient})
-			} else if isBroker2Tx {
-				continue
-			} else {
-				ccm.abGraph.AddEdge(partition_split.Vertex{Addr: ptx.Sender}, partition_split.Vertex{Addr: ptx.Recipient})
-			}
-		}
-	}
 }
 
 func (ccm *ABCommitteeMod) createConfirm(txs []*core.Transaction) {
